@@ -1,0 +1,319 @@
+    #include <ReefAngel_Features.h>
+    #include <Globals.h>
+    #include <RA_Wifi.h>
+    #include <Wire.h>
+    #include <OneWire.h>
+    #include <Time.h>
+    #include <DS1307RTC.h>
+    #include <InternalEEPROM.h>
+    #include <RA_NokiaLCD.h>
+    #include <RA_ATO.h>
+    #include <RA_Joystick.h>
+    #include <LED.h>
+    #include <RA_TempSensor.h>
+    #include <Relay.h>
+    #include <RA_PWM.h>
+    #include <Timer.h>
+    #include <Memory.h>
+    #include <InternalEEPROM.h>
+    #include <RA_Colors.h>
+    #include <RA_CustomColors.h>
+    #include <Salinity.h>
+    #include <RF.h>
+    #include <IO.h>
+    #include <ORP.h>
+    #include <AI.h>
+    #include <PH.h>
+    #include <WaterLevel.h>
+    #include <Humidity.h>
+    #include <DCPump.h>
+    #include <ReefAngel.h>
+
+    ////// Place global variable code below here
+
+    unsigned long LastUpdate1=0;    // For virtual Vinegar dosing pumps
+    unsigned long LastUpdate2=0;    // For virtual Magnesium dosing pumps
+    unsigned long LastUpdate3=0;    // For virtual ATO dosing pump
+
+    ////// Place global variable code above here
+
+
+    void setup()
+    {
+        // This must be the first line
+        ReefAngel.Init();  //Initialize controller
+        ReefAngel.Use2014Screen();  // Let's use 2014 Screen
+        ReefAngel.AddSalinityExpansion();  // Salinity Expansion Module
+        ReefAngel.AddWaterLevelExpansion();  // Water Level Expansion Module
+        // Ports toggled in Feeding Mode
+        ReefAngel.FeedingModePorts = 0;
+        ReefAngel.FeedingModePortsE[0] = Port1Bit;
+        // Ports toggled in Water Change Mode
+        ReefAngel.WaterChangePorts = Port1Bit | Port2Bit | Port3Bit | Port4Bit | Port7Bit | Port8Bit;
+        ReefAngel.WaterChangePortsE[0] = Port1Bit | Port3Bit | Port5Bit | Port7Bit;
+        // Ports toggled when Lights On / Off menu entry selected
+        ReefAngel.LightsOnPorts = 0;
+        ReefAngel.LightsOnPortsE[0] = 0;
+        // Ports turned off when Overheat temperature exceeded
+        ReefAngel.OverheatShutoffPorts = Port7Bit;
+        ReefAngel.OverheatShutoffPortsE[0] = 0;
+        // Use T1 probe as temperature and overheat functions
+        ReefAngel.TempProbe = T1_PROBE;
+        ReefAngel.OverheatProbe = T1_PROBE;
+        // Set the Overheat temperature setting
+        InternalMemory.OverheatTemp_write( 850 );
+
+        // Feeeding and Water Change mode speed
+        ReefAngel.DCPump.FeedingSpeed=0;
+        ReefAngel.DCPump.WaterChangeSpeed=0;
+
+
+        // Ports that are always on
+        ReefAngel.Relay.On( Port1 );
+        ReefAngel.Relay.On( Port2 );
+        ReefAngel.Relay.On( Port3 );
+        ReefAngel.Relay.On( Port4 );
+        ReefAngel.Relay.On( Port5 );
+        ReefAngel.Relay.On( Port6 );
+        ReefAngel.Relay.On( Box1_Port5 );
+
+        ////// Place additional initialization code below here
+       
+
+        ////// Place additional initialization code above here
+    }
+
+    void loop()
+    {
+        ReefAngel.StandardHeater( Port7,750,755 );
+        ReefAngel.StandardFan( Port8,760,800 );
+        ReefAngel.Relay.DelayedOn( Box1_Port1,15);
+        ReefAngel.StandardLights( Box1_Port3,20,0,8,0 );
+        //ReefAngel.WaterLevelATO( Box1_Port7,60,48,50 );
+        ReefAngel.RF.UseMemory = false;
+        ReefAngel.RF.SetMode(Constant,75,1);
+        //Use salinity compensation
+        ReefAngel.Salinity.SetCompensation(0);
+        ////// Place your custom code below here
+       
+        //Only use the ATO when no one is in house and there is water in reservior - taken out so runs 24/7
+        //Use Channel 4&2 as Redundant Controls.
+        if (ReefAngel.WaterLevel.GetLevel(4)<= 27 && ReefAngel.WaterLevel.GetLevel(1)>0) ReefAngel.Relay.On(Box1_Port7);
+        if (ReefAngel.WaterLevel.GetLevel(4)>30) ReefAngel.Relay.Off(Box1_Port7);
+    //Turn-off Skimmer whhen skimmer tank is full
+        if (ReefAngel.WaterLevel.GetLevel(3)>=90)
+        {
+          ReefAngel.Relay.Off(Box1_Port1);       
+        }else{
+          ReefAngel.Relay.On(Box1_Port1);
+        }
+    //How about some WaveMotion with the Vortech
+        static time_t feeding;
+    // Time schedule first
+    //Wave PatternslseDuration, boolean PulseSync);
+    //byte GyreMode(byte PulseMinSpeed, byte PulseMaxSpeed, int PulseDuration, boolean PulseSync);
+    //byte SineMode(byte PulseMinSpeed, byte PulseMaxSpeed, int PulseDuration, boolean PulseSync);
+    //byte ReefCrestMode(byte WaveSpeed, byte WaveOffset, boolean PulseSync);
+    //byte NutrientTransportMode(byte PulseMinSpeed, byte PulseMaxSpeed, int PulseDuration, boolean PulseSync);
+    //byte TidalSwellMode(byte WaveMaxSpeed, boolean PulseSync);
+    //byte TideMode(byte WaveSpeed, byte minOffset, byte maxOffset);
+    //byte ElseMode(byte midPoint, byte offset, boolean waveSync);
+
+        if (hour()>=6 && hour()<7) {
+          ReefAngel.PWM.SetDaylight( LongPulseMode(35,100,5,true) ); // Long pulse hi/low 50%20% 10s pulse on sync mode
+          ReefAngel.PWM.SetActinic( LongPulseMode(35,100,5,false) ); // Long pulse hi/low 50%20% 10s pulse on anti-sync mode
+        } else if (hour()>=7 && hour()<8) {
+          ReefAngel.PWM.SetDaylight ( ElseMode(80,20, true) ); // Short pulse at 60% with 200m
+          ReefAngel.PWM.SetActinic( ElseMode(80,20,false) ); // Short pulse at 60% with 200ms pulse on anti-sync mode
+        } else if (hour()>=8 && hour()<9) {
+          ReefAngel.PWM.SetDaylight( SineMode(35,100,180,true)); //Ramp up to 100% in 3mins in sync mode
+          ReefAngel.PWM.SetActinic( SineMode(35,100,180,true)); //Ramp up to 100% in 3mins in sync mode  
+        } else if (hour()>=9 && hour()<10) {
+          ReefAngel.PWM.SetDaylight( TidalSwellMode(100,true)); //Ramp up to 100% in 3mins in sync mode
+          ReefAngel.PWM.SetActinic( TidalSwellMode(100,false)); //Ramp up to 100% in 3mins in sync mode
+        } else if (hour()>=10 && hour()<11) {
+          ReefAngel.PWM.SetDaylight( ShortPulseMode(35,100,2000,true) ); // Short pulse at 30% - 100% with 2000ms pulse on sync mode
+          ReefAngel.PWM.SetActinic( ShortPulseMode(35,100,2000,false) ); // Short pulse at 30% - 100% with 2000ms pulse on anti-sync mode
+        } else if ( (hour()>=11 && hour()<12) && (now()-feeding > SECS_PER_DAY) ) { // We haven't fed today
+          ReefAngel.PWM.SetDaylight( NutrientTransportMode(30,100,5000,true) );
+          ReefAngel.PWM.SetActinic( NutrientTransportMode(30,100,5000,false) );
+        } else if (hour()>=11 && hour()<12) {
+          ReefAngel.PWM.SetDaylight( ReefCrestMode(80,20,true) ); // ReefCrest at 70% +/- 20% on sync mode
+          ReefAngel.PWM.SetActinic( ReefCrestMode(80,20,false) ); // ReefCrest at 70% +/- 20% on anti-sync mode
+        } else if (hour()>=12 && hour ()<13) {
+          ReefAngel.PWM.SetDaylight( ShortPulseMode(35,100,500,true) ); // Short pulse at 60% with 200ms pulse on sync mode
+          ReefAngel.PWM.SetActinic( ShortPulseMode(35,90,500,false) ); // Short pulse at 60% with 200ms pulse on anti-sync mode  
+        } else if (hour()>=13 && hour ()<14) {
+          ReefAngel.PWM.SetDaylight( ShortPulseMode(35,100,500,true) ); // Short pulse at 60% with 200ms pulse on sync mode
+          ReefAngel.PWM.SetActinic( ShortPulseMode(35,90,500,false) ); // Short pulse at 60% with 200ms pulse on anti-sync mode
+        } else if (hour()>=14 && hour()<15) {
+          //ReefAngel.PWM.SetDaylight ( ElseMode( 80,20, true) ); // Short pulse at 60% with 200m
+          //ReefAngel.PWM.SetActinic( ElseMode(80,20,false) ); // Short pulse at 60% with 200ms pulse on anti-sync mode
+          ReefAngel.PWM.SetDaylight ( GyreMode( 35, 100, 10, true) ); // Short pulse at 60% with 200m
+          ReefAngel.PWM.SetActinic( GyreMode(35,100, 10, true) ); // Short pulse at 60% with 200ms pulse on anti-sync mode
+        } else if (hour()>=15 && hour()<16) {
+          ReefAngel.PWM.SetDaylight( SineMode(35,100,30,true)); //Ramp up to 70% in 10mins in sync mode
+          ReefAngel.PWM.SetActinic( SineMode(35,100,30,true)); //Ramp up to 70% in 10mins in sync mode   
+        } else if (hour()>=16 && hour()<17) {
+          ReefAngel.PWM.SetDaylight( NutrientTransportMode(30,100,250,true) );
+          ReefAngel.PWM.SetActinic( NutrientTransportMode(30,100,250,false) );
+        } else if (hour()>=17 && hour ()<18) {
+          ReefAngel.PWM.SetDaylight( SineMode(35,100,20, true)); //Ramp up to 70% in 10mins in sync mode
+          ReefAngel.PWM.SetActinic( SineMode(35,100,20, false)); //Ramp up to 70% in 10mins in sync mode
+        } else if (hour()>=18 && hour ()<19) {
+          ReefAngel.PWM.SetDaylight( NutrientTransportMode(35,100,5000,true) );
+          ReefAngel.PWM.SetActinic( NutrientTransportMode(35,100,5000,false) );
+        } else if (hour()>=19 && hour ()<20) {
+          ReefAngel.PWM.SetDaylight( GyreMode(35,100, 10, true)); //Ramp up to 70% in 10mins in sync mode
+          ReefAngel.PWM.SetActinic( GyreMode(35,100, 10, false)); //Ramp up to 70% in 10mins in sync mode
+        } else if (hour()>=20 && hour ()<21) {
+          ReefAngel.PWM.SetDaylight( GyreMode(35,100, 120, true)); //Ramp up to 70% in 10mins in sync mode
+          ReefAngel.PWM.SetActinic( GyreMode(35,100, 120, false)); //Ramp up to 70% in 10mins in sync mode
+        } else {
+          ReefAngel.PWM.SetDaylight( SineMode(35,100,30,true)); //Ramp up to 70% in 10mins in sync mode
+          ReefAngel.PWM.SetActinic( SineMode(35,100,30,true)); //Ramp up to 70% in 10mins in sync mode
+        }   
+    // If we are feeding override the schedule
+        if (ReefAngel.DisplayedMenu==FEEDING_MODE)
+        {
+          ReefAngel.PWM.SetDaylight(30);
+          ReefAngel.PWM.SetActinic(30);
+          //Vortech
+          ReefAngel.RF.SetMode( Constant,50,100 );     
+          feeding=now();
+        }
+    // If we have finished feeding, start NTM for 3 hours
+        if (now()-feeding < 3*SECS_PER_HOUR)
+        {
+          ReefAngel.PWM.SetDaylight( NutrientTransportMode(35,100,500,true) );
+          ReefAngel.PWM.SetActinic( NutrientTransportMode(35,100,500,false) );
+          //vortech
+          ReefAngel.RF.SetMode(Smart_NTM,100,10);
+        }
+    //Do not use the memory bits inside the Vortech
+         ReefAngel.RF.UseMemory = false;
+    //Time based Vortech Schedule
+    /*Used by the RF Expansion Module
+          Vortech Modes
+          Constant      0
+          Lagoon	1
+          ReefCrest	2
+          ShortPulse	3
+          LongPulse	4
+          mart_NTM     5 // Nutrient Transport Mode
+          Smart_TSM     6 // Tidal Swell Mode
+          Storm         10
+          Custom        11
+          
+          The function is SetMode(Mode,Speed,Duration) and the parameter are:
+
+          Mode can be one of the following modes:
+          * Constant
+          * Random1 (Lagoonal)
+          * Random2 (Reef Crest)
+          * ShortWave (Short Pulse)
+          * LongWave (Long Pulse)
+          * Smart_NTM (Nutrient Transport Mode)
+          * Smart_TSM (Tidal Swell Mode)
+          * Storm (will only be available on the upcoming Dev libraries update or by using 10 instead of Storm)
+          * Custom (will only be available on the upcoming Dev libraries update or by using 11 instead of Custom)
+          
+          Speed is a number from 0 through 100
+          
+          Duration is only applicable to ShortWave, LongWave and Smart_NTM and represent the following:
+          ShortWave - tenths of a second
+          LongWave - seconds
+          Smart_NTM - tenths of a second
+          
+          The function for Custom mode is SetMode(Mode,Speed,Channel) and the parameter are:
+          
+          Mode: Custom
+          
+          Speed is a number from 0 through 100
+          
+          Channel:
+          0 - Sync
+          1- Anti-Sync
+          2- Back of Tank
+     */
+        if (hour()>=9 && hour()<10) {
+          ReefAngel.RF.SetMode(ReefCrest,100,10);
+        } else if (hour()>=10 && hour()<11) {
+          ReefAngel.RF.SetMode(Smart_TSM,100,0);
+        } else if (hour()>=11 && hour()<12) {
+          ReefAngel.RF.SetMode(ShortWave,100,100);
+        } else if (hour()>=12 && hour()<13) {
+          ReefAngel.RF.SetMode(Smart_NTM,100,100);
+        } else if (hour()>=13 && hour()<14) {     
+          ReefAngel.RF.SetMode(Storm,100,1);;
+        } else if (hour()>=14 && hour()<15){
+          ReefAngel.RF.SetMode(LongWave,100,5);
+        } else if (hour()>=15 && hour()<16) { 
+          ReefAngel.RF.SetMode(ReefCrest,100,10);
+        } else if (hour()>=16 && hour()<17) {
+          ReefAngel.RF.SetMode(Smart_TSM,100,10);
+        } else if (hour()>=17 && hour()<18) {
+          ReefAngel.RF.SetMode(ShortWave,100,10);
+        } else if (hour()>=18 && hour()<19) {
+          ReefAngel.RF.SetMode(Smart_NTM,100,100);
+        } else if (hour()>=19 && hour()<20) {     
+          ReefAngel.RF.SetMode(Storm,100,10);;
+        } else if (hour()>=20 && hour()<21){
+          ReefAngel.RF.SetMode(LongWave,100,7);
+        } else {
+          ReefAngel.RF.SetMode(Lagoon,75,10);
+          //ReefAngel.RF.SetMode(Storm,100,1);
+        }
+    //Code to make Vodka Dosing Work one time a day for 11 mins 
+    //Turn on at 8:00 AM
+        ReefAngel.DosingPumpRepeat(Box1_Port6,480,1440,600);
+    ///Code to make Vinegar Dosing Work 4 mins
+        ReefAngel.DosingPumpRepeat(Box1_Port8,0,60,240);
+    ///Do not turn on Vinegar if lights are off
+        if (hour()<=8 || hour()>21) {
+          ReefAngel.Relay.Off(Box1_Port8);
+        } 
+    //Code to make Magnesium Dosing Work
+        ReefAngel.DosingPumpRepeat(Box1_Port4,15,60,240);
+    //Code to check that the dosing pumps are running
+    // *******************  Turn on imaginary relays for 5 minutes when dosing pumps activate so Portal can track them  *******************
+    // Vinegar port
+        if (ReefAngel.Relay.Status(Box1_Port8) && LastUpdate1==0)
+        {
+          LastUpdate1 = now();
+          ReefAngel.Relay.On (Box2_Port1);
+        }
+        if (now() - LastUpdate1 >= 300 && LastUpdate1 != 0)
+        {
+          LastUpdate1 = 0;
+          ReefAngel.Relay.Off (Box2_Port1);
+        }
+    // Magnesium Port
+        if (ReefAngel.Relay.Status(Box1_Port4) && LastUpdate2==0)
+        {
+          LastUpdate2 = now();
+          ReefAngel.Relay.On (Box2_Port2);
+        }
+        if (now() - LastUpdate2 >= 300 && LastUpdate2 != 0)
+        {
+          LastUpdate2 = 0;
+          ReefAngel.Relay.Off (Box2_Port2);
+        }
+    // ATO Port
+        if (ReefAngel.Relay.Status(Box1_Port7) && LastUpdate3==0)
+        {
+          LastUpdate3 = now();
+          ReefAngel.Relay.On (Box2_Port3);
+        }
+        if (now() - LastUpdate3 >= 300 && LastUpdate3 != 0)
+        {
+          LastUpdate3 = 0;
+          ReefAngel.Relay.Off (Box2_Port3);
+        }
+    ////// Place your custom code above here
+
+    // This should always be the last line1
+        ReefAngel.Portal("Paul_Velasco");
+        ReefAngel.ShowInterface();
+    }
+
